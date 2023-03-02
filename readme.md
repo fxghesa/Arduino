@@ -7,3 +7,6 @@ https://github.com/esp8266/Arduino
 sudo apt remove brltty
 sudo apt autoclean && sudo apt autoremove
 
+3. cloud fire store example
+https://github.com/mobizt/Firebase-ESP-Client/tree/main/examples
+
