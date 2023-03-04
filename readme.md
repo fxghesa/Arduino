@@ -10,3 +10,11 @@ sudo apt autoclean && sudo apt autoremove
 3. cloud fire store example
 https://github.com/mobizt/Firebase-ESP-Client/tree/main/examples
 
+
+library required to install:
+1. https://github.com/esp8266/Arduino
+2. https://github.com/mobizt/Firebase-ESP-Client
+3. https://github.com/mobizt/Firebase-ESP-Client
+4. https://arduinojson.org/?utm_source=meta&utm_medium=library.properties
+5. https://github.com/milesburton/Arduino-Temperature-Control-Library
+6. http://www.pjrc.com/teensy/td_libs_OneWire.html
