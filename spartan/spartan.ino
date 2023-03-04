@@ -1,6 +1,7 @@
 #include <SoftwareSerial.h>
 #include <ArduinoJson.h>
 #include <time.h>
+int currentTime = 0; // can be minute or hour or day
 
 #pragma region SSID
 #include <ESP8266WiFi.h>
@@ -45,7 +46,7 @@ DallasTemperature sensors(&oneWire);
 #pragma endregion
 
 void setup() {
-  #pragma region Init Serial, WiFi, and Cloud Firestore
+  #pragma region Init Serial, Sesor, WiFi, and Cloud Firestore
   Serial.begin(9600);
   sensors.begin();
   WiFi.begin(ssid, password);
@@ -59,40 +60,44 @@ void setup() {
   Firebase.reconnectWiFi(true);
   #pragma endregion
 
-  // one time test
+  // run main() one time test
   // main();
 }
 
 void loop() {
-  // prod mode
+  // run main() loop mode
   main();
 }
 
 int main() {
+  delay(10000);
   sensors.requestTemperatures();
   float currentReadTemperature = sensors.getTempCByIndex(0);
-  if (WiFi.status() == WL_CONNECTED) {
-    int itemCode = 0;
-    if (Firebase.ready()) {
-      redo:
-      //"2023-02-26T17:00:00.00000Z"; // ISO 8601/RFC3339 UTC "Zulu" format
-      String currentTime = getTimeStampNow() + "Z";
-      if (insertLog(itemCode, currentReadTemperature, currentTime)) {
-        if (updateItemHeader(itemCode, currentReadTemperature)) {
-          Serial.println("success!");
-        } else {
-          Serial.println("header failed!");
-          goto redo;
+  if (currentReadTemperature != -127) {
+    if (WiFi.status() == WL_CONNECTED) {
+      int itemCode = 0;
+      if (Firebase.ready()) {
+        redo:
+        //"2023-02-26T17:00:00.00000Z"; // ISO 8601/RFC3339 UTC "Zulu" format
+        String currentDate = getTimeStampNow() + "Z";
+        while (!updateItemHeader(itemCode, currentReadTemperature)) {
+          Serial.println("update header failed!");
         }
-      } else {
-        Serial.println("log failed!");
-        goto redo;
+        Serial.println("update header success!");
+        // int timeRead = getCurrentMinute(currentDate.c_str()); // test only
+        int timeRead = getCurrentHour(currentDate.c_str());
+        if (currentTime != timeRead) {
+          while (!insertLog(itemCode, currentReadTemperature, currentDate)) {
+            Serial.println("logging failed!");
+          }
+          Serial.println("logging success!");
+          currentTime = timeRead; 
+        }
       }
+    } else {
+      startWifiConnection();
     }
-  } else {
-    startWifiConnection();
   }
-  delay(10000);
 }
 
 bool updateItemHeader(int itemCode, float currentReadTemperature) {
@@ -126,8 +131,7 @@ bool insertLog(int itemCode, float currentReadTemperature, String dateNow) {
   if(Firebase.Firestore.createDocument(&fbdo, FIREBASE_PROJECT_ID, "", documentPath.c_str(), content.raw())) {
     // Serial.printf("ok\n%s\n", fbdo.payload().c_str());
     return true;
-  }
-  else {
+  } else {
     Serial.println(fbdo.errorReason());
     return false;
   }
@@ -210,4 +214,18 @@ String convertDateTime(const char* date) {
   strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", &tm);
   // Serial.printf("%s", buf);
   return String(buf);
+}
+
+int getCurrentHour(const char* date) {
+  struct tm tm = {0};
+  char buf[100];
+  strptime(date, "%Y-%m-%dT%H:%M:%S", &tm);
+  return tm.tm_hour;
+}
+
+int getCurrentMinute(const char* date) {
+  struct tm tm = {0};
+  char buf[100];
+  strptime(date, "%Y-%m-%dT%H:%M:%S", &tm);
+  return tm.tm_min;
 }
