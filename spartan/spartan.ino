@@ -79,8 +79,9 @@ int main() {
     if (WiFi.status() == WL_CONNECTED) {
       int itemCode = 0;
       if (Firebase.ready()) {
-        currentDate = getTimeStampNow();
-        if (currentDate != "") {
+        String _currentDate = getTimeStampNow();
+        if (_currentDate != "") {
+          currentDate = _currentDate;
           currentDate += currentDate.indexOf("Z") <= 0 ? "Z" : "";
           while (!updateItemHeader(itemCode, currentReadTemperature)) {
             delay(2000);
