@@ -25,6 +25,15 @@ FirebaseConfig config;
 bool qcMode = true;
 #pragma endregion
 
+#pragma region DS18B20 Temperature Sensor
+#include <OneWire.h>
+#include <DallasTemperature.h>
+// Data wire is plugged into digital pin 2 on the Arduino
+#define ONE_WIRE_BUS 5
+OneWire oneWire(ONE_WIRE_BUS);
+DallasTemperature sensors(&oneWire);
+#pragma endregion
+
 #pragma region Item Document
 #define ITEM_0 "ZrM6BzaBriaNSliSGlXF"
 #define ITEM_1 "XQBI3RT7LEPIDcVh6XWR"
@@ -38,6 +47,7 @@ bool qcMode = true;
 void setup() {
   #pragma region Init Serial, WiFi, and Cloud Firestore
   Serial.begin(9600);
+  sensors.begin();
   WiFi.begin(ssid, password);
   startWifiConnection();
   config.api_key = API_KEY;
@@ -50,18 +60,19 @@ void setup() {
   #pragma endregion
 
   // one time test
-  main();
+  // main();
 }
 
 void loop() {
   // prod mode
-  // main();
+  main();
 }
 
 int main() {
-  if(WiFi.status() == WL_CONNECTED){
+  sensors.requestTemperatures();
+  float currentReadTemperature = sensors.getTempCByIndex(0);
+  if (WiFi.status() == WL_CONNECTED) {
     int itemCode = 0;
-    float currentReadTemperature = 30;
     if (Firebase.ready()) {
       redo:
       //"2023-02-26T17:00:00.00000Z"; // ISO 8601/RFC3339 UTC "Zulu" format
@@ -81,6 +92,7 @@ int main() {
   } else {
     startWifiConnection();
   }
+  delay(10000);
 }
 
 bool updateItemHeader(int itemCode, float currentReadTemperature) {
