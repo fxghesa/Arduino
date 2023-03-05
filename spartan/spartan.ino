@@ -4,8 +4,8 @@
 int currentTime = 0; // can be minute or hour or day
 //"2023-02-26T17:00:00.00000Z"; // ISO 8601/RFC3339 UTC "Zulu" format
 String currentDate = "2023-03-01T00:00:00.00000Z";
-int errorCount = 0; // reset if count more than 10
-void(* resetFunc) (void) = 0; //declare reset function @ address 0
+int errorCount = 0;
+void(* resetFunc) (void) = 0;
 
 #pragma region SSID
 #include <ESP8266WiFi.h>
@@ -182,6 +182,11 @@ String getTimeStampNow() {
   } else {
     Serial.println("set server time failled!");
     Serial.println(fbdo.errorReason());
+    Serial.printf("Using Input: ");
+    Serial.printf("randTime: ");
+    Serial.printf(String(randTime).c_str());
+    Serial.printf("currentDate: ");
+    Serial.println(currentDate);
     resetIfOverfailled();
     return "";
   }
@@ -254,8 +259,8 @@ int getCurrentMinute(const char* date) {
 
 void resetIfOverfailled() {
   errorCount++;
-  if (errorCount >= 10) {
+  if (errorCount >= 4) {
     Serial.println("resetting device ...");
-    resetFunc(); //call reset
+    resetFunc();
   }
 }
