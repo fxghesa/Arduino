@@ -4,6 +4,8 @@
 int currentTime = 0; // can be minute or hour or day
 //"2023-02-26T17:00:00.00000Z"; // ISO 8601/RFC3339 UTC "Zulu" format
 String currentDate = "2023-03-01T00:00:00.00000Z";
+int errorCount = 0; // reset if count more than 10
+void(* resetFunc) (void) = 0; //declare reset function @ address 0
 
 #pragma region SSID
 #include <ESP8266WiFi.h>
@@ -97,11 +99,17 @@ int main() {
             currentTime = timeRead; 
           }
         }
+      } else {
+        Serial.println("firestore connection not ready");
+        resetIfOverfailled();
       }
     } else {
       startWifiConnection();
     }
-  }
+  } else {
+      Serial.println("DS18B20 sensor disconnected");
+      resetIfOverfailled();
+    }
 }
 
 bool updateItemHeader(int itemCode, float currentReadTemperature) {
@@ -122,6 +130,7 @@ bool updateItemHeader(int itemCode, float currentReadTemperature) {
   } else {
     Serial.println("update header failed!");
     Serial.println(fbdo.errorReason());
+    resetIfOverfailled();
     return false;
   }
 }
@@ -139,6 +148,7 @@ bool insertLog(int itemCode, float currentReadTemperature, String dateNow) {
   } else {
     Serial.println("logging failed!");
     Serial.println(fbdo.errorReason());
+    resetIfOverfailled();
     return false;
   }
 }
@@ -157,6 +167,7 @@ String getTimeStampNow() {
       if (error) {
         Serial.println("deserializeJson() failed: ");
         Serial.println(error.f_str());
+        resetIfOverfailled();
         return "";
       }
       const char* timeResult = doc["updateTime"];
@@ -165,11 +176,13 @@ String getTimeStampNow() {
     } else {
       Serial.println("get server time failled!");
       Serial.println(fbdo.errorReason());
+      resetIfOverfailled();
       return "";
     }
   } else {
     Serial.println("set server time failled!");
     Serial.println(fbdo.errorReason());
+    resetIfOverfailled();
     return "";
   }
 }
@@ -237,4 +250,12 @@ int getCurrentMinute(const char* date) {
   char buf[100];
   strptime(date, "%Y-%m-%dT%H:%M:%S", &tm);
   return tm.tm_min;
+}
+
+void resetIfOverfailled() {
+  errorCount++;
+  if (errorCount >= 10) {
+    Serial.println("resetting device ...");
+    resetFunc(); //call reset
+  }
 }
