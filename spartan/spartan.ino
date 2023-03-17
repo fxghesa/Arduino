@@ -1,4 +1,5 @@
 #include <SoftwareSerial.h>
+#include <ArduinoOTA.h>
 #include <ArduinoJson.h>
 #include <time.h>
 int currentTime = 0; // can be minute or hour or day
@@ -10,6 +11,7 @@ void(* resetFunc) (void) = 0;
 
 #pragma region SSID
 #include <ESP8266WiFi.h>
+#include <ESP8266mDNS.h>
 const char* ssid = "Brawijaya";
 const char* password = "ujungberung";
 // const char* ssid = "";
@@ -53,8 +55,8 @@ DallasTemperature sensors(&oneWire);
 
 void setup() {
   Serial.println("[info] booting");
-  #pragma region Init Serial, Sesor, WiFi, and Cloud Firestore
-  Serial.begin(9600);
+  #pragma region init Serial, Sesor, WiFi, and Cloud Firestore
+  Serial.begin(115200);
   sensors.begin();
   WiFi.begin(ssid, password);
   startWifiConnection();
@@ -67,11 +69,33 @@ void setup() {
   Firebase.reconnectWiFi(true);
   #pragma endregion
 
+  #pragma region init OTA
+  ArduinoOTA.onStart([]() {
+    Serial.println("[info] init OTA");
+  });
+  ArduinoOTA.onEnd([]() {
+    Serial.println("\[info] init OTA finished");
+  });
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    Serial.printf("[info] Progress: %u%%\r", (progress / (total / 100)));
+  });
+  ArduinoOTA.onError([](ota_error_t error) {
+    Serial.printf("[error] Error[%u]: ", error);
+    if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
+    else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
+    else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
+    else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
+    else if (error == OTA_END_ERROR) Serial.println("End Failed");
+  });
+  ArduinoOTA.begin();
+  #pragma endregion
+
   // run main() one time test
   // main();
 }
 
 void loop() {
+  ArduinoOTA.handle();
   // run main() loop mode
   main();
 }
@@ -79,6 +103,7 @@ void loop() {
 int main() {
   delay(30000); // 30 seconds
   // delay(60000); // 1 minute
+  Serial.printf("[info] proccessing ItemCode [%d]\n", itemCode);
   sensors.requestTemperatures();
   float currentReadTemperature = sensors.getTempCByIndex(itemCode);
   if (currentReadTemperature != -127) {
@@ -101,8 +126,6 @@ int main() {
             Serial.println("[success] logging success!");
             currentTime = timeRead; 
           }
-
-          itemCode = (!qcMode && itemCode < 5) || (qcMode && itemCode < 1) ? itemCode + 1 : 0;
         }
       } else {
         Serial.println("[error] firestore connection not ready");
@@ -112,9 +135,14 @@ int main() {
       startWifiConnection();
     }
   } else {
-      Serial.printf("[error] DS18B20 sensor [%d] disconnected\n", itemCode);
-      resetIfOverfailed();
-    }
+    Serial.printf("[error] DS18B20 sensor [%d] disconnected\n", itemCode);
+    itemCode++;
+    resetIfOverfailed();
+  }
+  
+  if (!qcMode) {
+    increaseItemCode();
+  }
 }
 
 bool updateItemHeader(int itemCode, float currentReadTemperature) {
@@ -230,6 +258,15 @@ String getDocumentCode(int itemCode) {
         return ITEM_1_QC;
     }
   }
+}
+
+void increaseItemCode() {
+  if (qcMode) {
+    itemCode = (itemCode < 1) ? itemCode + 1 : 0;
+  } else {
+    itemCode = (itemCode < 5) ? itemCode + 1 : 0;
+  }
+  
 }
 
 String convertDateTime(const char* date) {
