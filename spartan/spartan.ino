@@ -101,14 +101,14 @@ int main() {
         }
       } else {
         Serial.println("firestore connection not ready");
-        resetIfOverfailled();
+        resetIfOverfailed();
       }
     } else {
       startWifiConnection();
     }
   } else {
       Serial.println("DS18B20 sensor disconnected");
-      resetIfOverfailled();
+      resetIfOverfailed();
     }
 }
 
@@ -130,7 +130,7 @@ bool updateItemHeader(int itemCode, float currentReadTemperature) {
   } else {
     Serial.println("update header failed!");
     Serial.println(fbdo.errorReason());
-    resetIfOverfailled();
+    resetIfOverfailed();
     return false;
   }
 }
@@ -148,7 +148,7 @@ bool insertLog(int itemCode, float currentReadTemperature, String dateNow) {
   } else {
     Serial.println("logging failed!");
     Serial.println(fbdo.errorReason());
-    resetIfOverfailled();
+    resetIfOverfailed();
     return false;
   }
 }
@@ -167,7 +167,7 @@ String getTimeStampNow() {
       if (error) {
         Serial.println("deserializeJson() failed: ");
         Serial.println(error.f_str());
-        resetIfOverfailled();
+        resetIfOverfailed();
         return "";
       }
       const char* timeResult = doc["updateTime"];
@@ -176,7 +176,7 @@ String getTimeStampNow() {
     } else {
       Serial.println("get server time failled!");
       Serial.println(fbdo.errorReason());
-      resetIfOverfailled();
+      resetIfOverfailed();
       return "";
     }
   } else {
@@ -187,7 +187,7 @@ String getTimeStampNow() {
     Serial.printf(String(randTime).c_str());
     Serial.printf("currentDate: ");
     Serial.println(currentDate);
-    resetIfOverfailled();
+    resetIfOverfailed();
     return "";
   }
 }
@@ -257,7 +257,7 @@ int getCurrentMinute(const char* date) {
   return tm.tm_min;
 }
 
-void resetIfOverfailled() {
+void resetIfOverfailed() {
   errorCount++;
   if (errorCount >= 4) {
     Serial.println("resetting device ...");
