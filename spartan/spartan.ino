@@ -3,6 +3,7 @@
 #include <time.h>
 int currentTime = 0; // can be minute or hour or day
 //"2023-02-26T17:00:00.00000Z"; // ISO 8601/RFC3339 UTC "Zulu" format
+int itemCode = 0;
 String currentDate = "2023-03-01T00:00:00.00000Z";
 int errorCount = 0;
 void(* resetFunc) (void) = 0;
@@ -45,11 +46,13 @@ DallasTemperature sensors(&oneWire);
 #define ITEM_2 "BnF9PZs02yHXBTBdwszT"
 #define ITEM_3 "XE584ON3H6cEE2Nn9btP"
 #define ITEM_4 "lNYFTm6MssOC1ZtFSnZD"
+#define ITEM_5 "TqMR7gF6MC5i9IeFdTfB"
 #define ITEM_0_QC "ZQtO1TTwNsO2ilsLkQAx"
 #define ITEM_1_QC "oriYYaxGGzZJof8TrZER"
 #pragma endregion
 
 void setup() {
+  Serial.println("[info] booting");
   #pragma region Init Serial, Sesor, WiFi, and Cloud Firestore
   Serial.begin(9600);
   sensors.begin();
@@ -74,12 +77,12 @@ void loop() {
 }
 
 int main() {
-  delay(60000); // 1 minute
+  delay(30000); // 30 seconds
+  // delay(60000); // 1 minute
   sensors.requestTemperatures();
-  float currentReadTemperature = sensors.getTempCByIndex(0);
+  float currentReadTemperature = sensors.getTempCByIndex(itemCode);
   if (currentReadTemperature != -127) {
     if (WiFi.status() == WL_CONNECTED) {
-      int itemCode = 0;
       if (Firebase.ready()) {
         String _currentDate = getTimeStampNow();
         if (_currentDate != "") {
@@ -88,26 +91,28 @@ int main() {
           while (!updateItemHeader(itemCode, currentReadTemperature)) {
             delay(2000);
           }
-          Serial.println("update header success!");
+          Serial.println("[success] update header success!");
           // int timeRead = getCurrentMinute(currentDate.c_str()); // test only
           int timeRead = getCurrentHour(currentDate.c_str());
           if (currentTime != timeRead) {
             while (!insertLog(itemCode, currentReadTemperature, currentDate)) {
               delay(2000);
             }
-            Serial.println("logging success!");
+            Serial.println("[success] logging success!");
             currentTime = timeRead; 
           }
+
+          itemCode = (!qcMode && itemCode < 5) || (qcMode && itemCode < 1) ? itemCode + 1 : 0;
         }
       } else {
-        Serial.println("firestore connection not ready");
+        Serial.println("[error] firestore connection not ready");
         resetIfOverfailed();
       }
     } else {
       startWifiConnection();
     }
   } else {
-      Serial.println("DS18B20 sensor disconnected");
+      Serial.printf("[error] DS18B20 sensor [%d] disconnected\n", itemCode);
       resetIfOverfailed();
     }
 }
@@ -128,7 +133,7 @@ bool updateItemHeader(int itemCode, float currentReadTemperature) {
     // Serial.printf("ok\n%s\n\n", fbdo.payload().c_str());
     return true;
   } else {
-    Serial.println("update header failed!");
+    Serial.println("[error] update header failed!");
     Serial.println(fbdo.errorReason());
     resetIfOverfailed();
     return false;
@@ -146,7 +151,7 @@ bool insertLog(int itemCode, float currentReadTemperature, String dateNow) {
     // Serial.printf("ok\n%s\n", fbdo.payload().c_str());
     return true;
   } else {
-    Serial.println("logging failed!");
+    Serial.println("[error] logging failed!");
     Serial.println(fbdo.errorReason());
     resetIfOverfailed();
     return false;
@@ -165,7 +170,7 @@ String getTimeStampNow() {
       DynamicJsonDocument doc(500);
       DeserializationError error = deserializeJson(doc, fbdo.payload().c_str());
       if (error) {
-        Serial.println("deserializeJson() failed: ");
+        Serial.println("[error] deserializeJson() failed: ");
         Serial.println(error.f_str());
         resetIfOverfailed();
         return "";
@@ -174,19 +179,14 @@ String getTimeStampNow() {
       String date = convertDateTime(timeResult);
       return date;
     } else {
-      Serial.println("get server time failled!");
+      Serial.println("[error] get server time failled!");
       Serial.println(fbdo.errorReason());
       resetIfOverfailed();
       return "";
     }
   } else {
-    Serial.println("set server time failled!");
+    Serial.println("[error] set server time failled!");
     Serial.println(fbdo.errorReason());
-    Serial.printf("Using Input: ");
-    Serial.printf("randTime: ");
-    Serial.printf(String(randTime).c_str());
-    Serial.printf("currentDate: ");
-    Serial.println(currentDate);
     resetIfOverfailed();
     return "";
   }
@@ -194,12 +194,12 @@ String getTimeStampNow() {
 
 void startWifiConnection() {
   #pragma region Reconnect WiFi
-  Serial.printf("Connecting ");
+  Serial.printf("[info] Connecting ");
   while(WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
   }
-  Serial.printf("\nConnected with IP: ");
+  Serial.printf("\n[info] Connected with IP: ");
   Serial.println(WiFi.localIP());
   #pragma endregion
 }
@@ -218,6 +218,8 @@ String getDocumentCode(int itemCode) {
         return ITEM_3;
       case 4:
         return ITEM_4;
+      case 5:
+        return ITEM_5;
     }
   } else {
     switch (itemCode) {
@@ -260,7 +262,7 @@ int getCurrentMinute(const char* date) {
 void resetIfOverfailed() {
   errorCount++;
   if (errorCount >= 4) {
-    Serial.println("resetting device ...");
+    Serial.println("[info] resetting device ...");
     resetFunc();
   }
 }
