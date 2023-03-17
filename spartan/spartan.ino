@@ -136,11 +136,11 @@ bool updateItemHeader(int itemCode, float currentReadTemperature) {
 }
 
 bool insertLog(int itemCode, float currentReadTemperature, String dateNow) {
-  String documentPath = qcMode ? "ITEMTEMPERATUREQC" : "ITEMTEMPERATURE";
+  String documentPath = qcMode ? "ITEMSENSORLOGQC" : "ITEMSENSORLOG";
   FirebaseJson content;
   content.set("fields/ItemCode/doubleValue", String(itemCode).c_str());
   content.set("fields/TemperatureValue/doubleValue", String(currentReadTemperature).c_str());
-  content.set("fields/LastUpdateDate/timestampValue", String(dateNow).c_str());
+  content.set("fields/CreateDate/timestampValue", String(dateNow).c_str());
   content.set("fields/CreateBy/stringValue", "system");
   if(Firebase.Firestore.createDocument(&fbdo, FIREBASE_PROJECT_ID, "", documentPath.c_str(), content.raw())) {
     // Serial.printf("ok\n%s\n", fbdo.payload().c_str());
