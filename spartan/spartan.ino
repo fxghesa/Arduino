@@ -222,12 +222,12 @@ String getTimeStampNow() {
 
 void startWifiConnection() {
   #pragma region Reconnect WiFi
-  Serial.printf("[info] Connecting ");
+  Serial.printf("[info] connecting ");
   while(WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
   }
-  Serial.printf("\n[info] Connected with IP: ");
+  Serial.printf("\n[info] connected with IP: ");
   Serial.println(WiFi.localIP());
   #pragma endregion
 }
