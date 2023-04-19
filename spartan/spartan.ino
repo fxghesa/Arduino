@@ -2,6 +2,7 @@
 #include <ArduinoOTA.h>
 #include <ArduinoJson.h>
 #include <time.h>
+#include <EEPROM.h>
 int currentTime = 0; // can be minute or hour or day
 //"2023-02-26T17:00:00.00000Z"; // ISO 8601/RFC3339 UTC "Zulu" format
 int itemCode = 0;
@@ -12,9 +13,10 @@ void(* resetFunc) (void) = 0;
 #pragma region SSID
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
+#include <ESP8266HTTPClient.h>
 const char* ssid = "Brawijaya";
 const char* password = "ujungberung";
-// const char* ssid = "";
+// const char* ssid = "Sandy Asmara";
 // const char* password = "sandydimas17";
 #pragma endregion
 
@@ -55,11 +57,24 @@ DallasTemperature sensors(&oneWire);
 
 void setup() {
   Serial.println("[info] booting");
-  #pragma region init Serial, Sesor, WiFi, and Cloud Firestore
+  #pragma region init Serial, EEPROM, Sensor, WiFi, and Cloud Firestore
   Serial.begin(115200);
   sensors.begin();
   WiFi.begin(ssid, password);
   startWifiConnection();
+
+  EEPROM.begin(512);
+  #pragma region send pending FCM
+  Serial.println("[info] reading EEPROM");
+  String recivedData = read_String(10);
+  if (recivedData != "0") {
+    Serial.println("[info] pending FCM detected");
+    sendFCM(recivedData);
+  } else {
+    Serial.println("[info] no FCM pending");
+  }
+  #pragma endregion
+
   config.api_key = API_KEY;
   auth.user.email = USER_EMAIL;
   auth.user.password = USER_PASSWORD;
@@ -109,6 +124,10 @@ int main() {
   if (currentReadTemperature != -127) {
     if (WiFi.status() == WL_CONNECTED) {
       if (Firebase.ready()) {
+        if (currentReadTemperature > 32) {
+          String message = "Item " + String(itemCode) + " temperature is warm: " + String(currentReadTemperature);
+          fetchFCM("Warning", message);
+        }
         String _currentDate = getTimeStampNow();
         if (_currentDate != "") {
           currentDate = _currentDate;
@@ -140,9 +159,7 @@ int main() {
     resetIfOverfailed();
   }
   
-  if (!qcMode) {
-    increaseItemCode();
-  }
+  increaseItemCode();
 }
 
 bool updateItemHeader(int itemCode, float currentReadTemperature) {
@@ -188,7 +205,7 @@ bool insertLog(int itemCode, float currentReadTemperature, String dateNow) {
 
 String getTimeStampNow() {
   unsigned long randTime = millis();
-  String serverTimePath = "SERVERTIME/ServerTime";
+  String serverTimePath = qcMode ? "SERVERTIMEQC/ServerTime" : "SERVERTIME/ServerTime";
   FirebaseJson content;
   content.set("fields/CreateBy/stringValue", String(randTime).c_str());
   content.set("fields/LastGet/timestampValue", String(currentDate).c_str());
@@ -207,14 +224,19 @@ String getTimeStampNow() {
       String date = convertDateTime(timeResult);
       return date;
     } else {
-      Serial.println("[error] get server time failled!");
+      Serial.println("[error] get server time failed!");
       Serial.println(fbdo.errorReason());
       resetIfOverfailed();
       return "";
     }
   } else {
-    Serial.println("[error] set server time failled!");
+    Serial.println("[error] set server time failed!");
     Serial.println(fbdo.errorReason());
+    Serial.printf("[error] input used: ");
+    Serial.printf(String(randTime).c_str());
+    Serial.printf("\n");
+    Serial.printf(String(currentDate).c_str());
+    Serial.printf("\n");
     resetIfOverfailed();
     return "";
   }
@@ -262,7 +284,8 @@ String getDocumentCode(int itemCode) {
 
 void increaseItemCode() {
   if (qcMode) {
-    itemCode = (itemCode < 1) ? itemCode + 1 : 0;
+    // itemCode = (itemCode < 1) ? itemCode + 1 : 0;
+    itemCode = 0;
   } else {
     itemCode = (itemCode < 5) ? itemCode + 1 : 0;
   }
@@ -302,4 +325,125 @@ void resetIfOverfailed() {
     Serial.println("[info] resetting device ...");
     resetFunc();
   }
+}
+
+void fetchFCM(String title, String message) {
+  Serial.println("[info] get all user token for FCM");
+  String tokens = "";
+  String userPath = qcMode ? "USERQC" : "USER";
+  if (Firebase.Firestore.listDocuments(&fbdo, FIREBASE_PROJECT_ID, "", userPath.c_str(), 3, "", "", "FcmToken", false)) {
+    // Serial.printf("[info] user token result: \n%s\n\n", fbdo.payload().c_str());
+    DynamicJsonDocument doc(800);
+    DeserializationError error = deserializeJson(doc, fbdo.payload().c_str());
+    if (error) {
+      Serial.printf("[error] deserializeJson() failed: ");
+      Serial.println(error.f_str());
+      resetIfOverfailed();
+    } else {
+      int i = 0;
+      bool continueLoop = true;
+      while (continueLoop) {
+        String token = doc["documents"][i]["fields"]["FcmToken"]["stringValue"];
+        tokens += (tokens == "") ? "\"" + token + "\"" : ",\"" + token + "\"";
+
+        i++;
+        String check = doc["documents"][i];
+        continueLoop = (check != "null") ? true : false;
+      }
+    }
+  } else {
+    Serial.printf("[error] get user failed! ");
+    Serial.println(fbdo.errorReason());
+    resetIfOverfailed();
+  }
+
+  String httpRequestData = "";
+  if (tokens != "") {
+    httpRequestData += "{\"registration_ids\": [" + tokens + "]";
+    httpRequestData += ", \"notification\": { \"body\": \"" + message + "\"";
+    httpRequestData += ", \"title\": \"" + title + "\" }}";
+    writeString(10, httpRequestData);
+    // reset immediately
+    errorCount = 4;
+    resetIfOverfailed();
+  }
+}
+
+void sendFCM(String httpRequestData) {
+  if (WiFi.status() == WL_CONNECTED) {
+    String auth = "key=AAAAfvFyFkM:APA91bHCvoVe9wXdtD7PM6on0qebHHkin2Cd28psimpNtS3jtthSBYOi4lBDC2lQNzeD_p2hMmvRhdI-STVbm-4TjfNQQ8a_BRjnBhJPdyRMQhIiCqtXwqJrwqz8rvEgrEw8F7I02Dqg";
+    // https://randomnerdtutorials.com/esp8266-nodemcu-https-requests/#:~:text=ESP8266%20NodeMCU%20HTTPS%20Requests%20%E2%80%93%20No%20Certificate
+    // //CONNECT: connect https
+    std::unique_ptr<BearSSL::WiFiClientSecure>clients(new BearSSL::WiFiClientSecure);
+    
+    // // Ignore SSL certificate validation
+    clients->setInsecure();
+    
+    // //create an HTTPClient instance
+    HTTPClient https;
+    WiFiClient client;
+    
+    //Initializing an HTTPS communication using the secure client
+    Serial.print("[https] begin POST...\n");
+    if (https.begin(*clients, "https://fcm.googleapis.com/fcm/send")) {  // HTTPS
+      https.addHeader("Content-Type", "application/json");
+      https.addHeader("Authorization", auth);
+      // start connection and send HTTP header
+      resend:
+      int httpCode = https.POST(httpRequestData);
+      // httpCode will be negative on error
+      if (httpCode > 0) {
+        // HTTP header has been send and Server response header has been handled
+        Serial.printf("[https] POST... result code: %d\n", httpCode);
+        // file found at server
+        if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY) {
+          // String payload = https.getString();
+          // Serial.println(payload);
+          clients = NULL;
+          writeString(10, "0");
+          // reset immediately
+          errorCount = 4;
+          resetIfOverfailed();
+        }
+      } else {
+        Serial.printf("[https] POST... failed, result code: %s\n", https.errorToString(httpCode).c_str());
+        https.end();
+        resetIfOverfailed();
+        goto resend;
+      }
+      https.end();
+    } else {
+      Serial.printf("[https] Unable to connect\n");
+      resetIfOverfailed();
+    }
+  }
+}
+
+// https://circuits4you.com/2018/10/16/arduino-reading-and-writing-string-to-eeprom/
+void writeString(char add,String data) {
+  int _size = data.length();
+  int i;
+  for(i=0;i<_size;i++)
+  {
+    EEPROM.write(add+i,data[i]);
+  }
+  EEPROM.write(add+_size,'\0');   //Add termination null character for String Data
+  EEPROM.commit();
+}
+
+// https://circuits4you.com/2018/10/16/arduino-reading-and-writing-string-to-eeprom/
+String read_String(char add) {
+  int i;
+  char data[500]; //Max 100 Bytes
+  int len=0;
+  unsigned char k;
+  k=EEPROM.read(add);
+  while(k != '\0' && len<500)   //Read until null character
+  {    
+    k=EEPROM.read(add+len);
+    data[len]=k;
+    len++;
+  }
+  data[len]='\0';
+  return String(data);
 }
