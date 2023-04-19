@@ -3,6 +3,8 @@
 #include <ArduinoJson.h>
 #include <time.h>
 #include <EEPROM.h>
+#define IS_TEMP_FCM_FREE_ADDRESS 0 // flag to prevent FCM spam
+#define FCM_BODY_ADDRESS 10 // FCM request body
 int currentTime = 0; // can be minute or hour or day
 //"2023-02-26T17:00:00.00000Z"; // ISO 8601/RFC3339 UTC "Zulu" format
 int itemCode = 0;
@@ -66,7 +68,7 @@ void setup() {
   EEPROM.begin(512);
   #pragma region send pending FCM
   Serial.println("[info] reading EEPROM");
-  String recivedData = read_String(10);
+  String recivedData = read_String(FCM_BODY_ADDRESS);
   if (recivedData != "0") {
     Serial.println("[info] pending FCM detected");
     sendFCM(recivedData);
@@ -124,9 +126,10 @@ int main() {
   if (currentReadTemperature != -127) {
     if (WiFi.status() == WL_CONNECTED) {
       if (Firebase.ready()) {
-        if (currentReadTemperature > 32) {
+        if (currentReadTemperature > 32 && EEPROM.read(IS_TEMP_FCM_FREE_ADDRESS) == 1) {
+          String title = "Warning";
           String message = "Item " + String(itemCode) + " temperature is warm: " + String(currentReadTemperature);
-          fetchFCM("Warning", message);
+          fetchFCM(title, message);
         }
         String _currentDate = getTimeStampNow();
         if (_currentDate != "") {
@@ -142,6 +145,7 @@ int main() {
             while (!insertLog(itemCode, currentReadTemperature, currentDate)) {
               delay(2000);
             }
+            EEPROM.write(IS_TEMP_FCM_FREE_ADDRESS, 1);
             Serial.println("[success] logging success!");
             currentTime = timeRead; 
           }
@@ -362,7 +366,7 @@ void fetchFCM(String title, String message) {
     httpRequestData += "{\"registration_ids\": [" + tokens + "]";
     httpRequestData += ", \"notification\": { \"body\": \"" + message + "\"";
     httpRequestData += ", \"title\": \"" + title + "\" }}";
-    writeString(10, httpRequestData);
+    writeString(FCM_BODY_ADDRESS, httpRequestData);
     // reset immediately
     errorCount = 4;
     resetIfOverfailed();
@@ -400,7 +404,7 @@ void sendFCM(String httpRequestData) {
           // String payload = https.getString();
           // Serial.println(payload);
           clients = NULL;
-          writeString(10, "0");
+          writeString(FCM_BODY_ADDRESS, "0");
           // reset immediately
           errorCount = 4;
           resetIfOverfailed();
