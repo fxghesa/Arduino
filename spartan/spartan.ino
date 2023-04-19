@@ -3,7 +3,7 @@
 #include <ArduinoJson.h>
 #include <time.h>
 #include <EEPROM.h>
-#define IS_TEMP_FCM_FREE_ADDRESS 0 // flag to prevent FCM spam
+#define IS_TEMP_FCM_FREE_ADDRESS 0 // flag to prevent temperature FCM spam
 #define FCM_BODY_ADDRESS 10 // FCM request body
 int currentTime = 0; // can be minute or hour or day
 //"2023-02-26T17:00:00.00000Z"; // ISO 8601/RFC3339 UTC "Zulu" format
