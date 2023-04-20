@@ -151,6 +151,7 @@ int main() {
       if (rainSensorValue < 900) {
         if (prevRainState != 1) {
           EEPROM.write(RAIN_SENSOR_STATE, 1);
+          EEPROM.commit();
         }
         if (prevRainState < 1) {
           title = "Info";
@@ -160,6 +161,7 @@ int main() {
       } else if (rainSensorValue < 500) {
         if (prevRainState != 2) {
           EEPROM.write(RAIN_SENSOR_STATE, 2);
+          EEPROM.commit();
         }
         if (prevRainState < 2) {
           title = "Info";
@@ -169,6 +171,7 @@ int main() {
       } else if (rainSensorValue < 100) {
         if (prevRainState != 3) {
           EEPROM.write(RAIN_SENSOR_STATE, 3);
+          EEPROM.commit();
         }
         if (prevRainState < 3) {
           title = "Warning";
@@ -178,6 +181,7 @@ int main() {
       } else {
         if (prevRainState != 0) {
           EEPROM.write(RAIN_SENSOR_STATE, 0);
+          EEPROM.commit();
         }
       }
     }
@@ -206,6 +210,7 @@ int main() {
               delay(2000);
             }
             EEPROM.write(IS_TEMP_FCM_FREE_ADDRESS, 1);
+            EEPROM.commit();
             Serial.println("[success] logging success!");
             currentTime = timeRead; 
           }
