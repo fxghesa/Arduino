@@ -37,11 +37,14 @@ FirebaseConfig config;
 bool qcMode = true;
 #pragma endregion
 
+#define RAIN_PIN_ANALOG A0 // A0
+#define RAIN_PIN_DIGITAL D0 // D0
+
 #pragma region DS18B20 Temperature Sensor
 #include <OneWire.h>
 #include <DallasTemperature.h>
 // Data wire is plugged into digital pin 2 on the Arduino
-#define ONE_WIRE_BUS 5
+#define ONE_WIRE_BUS 5 //D2
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
 #pragma endregion
@@ -65,7 +68,7 @@ void setup() {
   WiFi.begin(ssid, password);
   startWifiConnection();
 
-  EEPROM.begin(512);
+  EEPROM.begin(1536);
   #pragma region send pending FCM
   Serial.println("[info] reading EEPROM");
   String recivedData = read_String(FCM_BODY_ADDRESS);
@@ -120,9 +123,32 @@ void loop() {
 int main() {
   delay(30000); // 30 seconds
   // delay(60000); // 1 minute
+
+  #pragma region Rain reading
+  int rainSensorValue = analogRead(RAIN_PIN_ANALOG);
+  Serial.println(rainSensorValue);
+  if (rainSensorValue < 900) { //drizzling
+    Serial.println("drizzling");
+  } else if (rainSensorValue < 400) {
+    Serial.println("rain");
+  } else if (rainSensorValue < 100) {
+    Serial.println("heavy rain");
+  } else {
+    Serial.println("no rain");
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    if (Firebase.ready()) {
+
+    }
+  }
+  #pragma endregion
+
   Serial.printf("[info] proccessing ItemCode [%d]\n", itemCode);
+  #pragma region Item Temperature reading
   sensors.requestTemperatures();
   float currentReadTemperature = sensors.getTempCByIndex(itemCode);
+  Serial.printf("[info] read temperature: %f\n", currentReadTemperature);
   if (currentReadTemperature != -127) {
     if (WiFi.status() == WL_CONNECTED) {
       if (Firebase.ready()) {
@@ -162,6 +188,7 @@ int main() {
     itemCode++;
     resetIfOverfailed();
   }
+  #pragma endregion
   
   increaseItemCode();
 }
@@ -337,7 +364,7 @@ void fetchFCM(String title, String message) {
   String userPath = qcMode ? "USERQC" : "USER";
   if (Firebase.Firestore.listDocuments(&fbdo, FIREBASE_PROJECT_ID, "", userPath.c_str(), 3, "", "", "FcmToken", false)) {
     // Serial.printf("[info] user token result: \n%s\n\n", fbdo.payload().c_str());
-    DynamicJsonDocument doc(800);
+    DynamicJsonDocument doc(1536);
     DeserializationError error = deserializeJson(doc, fbdo.payload().c_str());
     if (error) {
       Serial.printf("[error] deserializeJson() failed: ");
@@ -438,11 +465,11 @@ void writeString(char add,String data) {
 // https://circuits4you.com/2018/10/16/arduino-reading-and-writing-string-to-eeprom/
 String read_String(char add) {
   int i;
-  char data[500]; //Max 100 Bytes
+  char data[1536]; //Max 100 Bytes
   int len=0;
   unsigned char k;
   k=EEPROM.read(add);
-  while(k != '\0' && len<500)   //Read until null character
+  while(k != '\0' && len<1536)   //Read until null character
   {    
     k=EEPROM.read(add+len);
     data[len]=k;
