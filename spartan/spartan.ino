@@ -62,8 +62,13 @@ DallasTemperature sensors(&oneWire);
 
 void setup() {
   Serial.println("[info] booting");
+  
   #pragma region init Serial, EEPROM, Sensor, WiFi, and Cloud Firestore
   Serial.begin(115200);
+
+  /*
+  * for SensorType please see table CODEMASTER.CodeType = SensorType
+  */
   sensors.begin();
   WiFi.begin(ssid, password);
   startWifiConnection();
@@ -161,7 +166,7 @@ int main() {
         if (_currentDate != "") {
           currentDate = _currentDate;
           currentDate += currentDate.indexOf("Z") <= 0 ? "Z" : "";
-          while (!updateItemHeader(itemCode, currentReadTemperature)) {
+          while (!updateItemHeader(itemCode, currentReadTemperature, currentDate)) {
             delay(2000);
           }
           Serial.println("[success] update header success!");
@@ -193,12 +198,13 @@ int main() {
   increaseItemCode();
 }
 
-bool updateItemHeader(int itemCode, float currentReadTemperature) {
+bool updateItemHeader(int itemCode, float currentReadTemperature, String dateNow) {
   String itemDocument = getDocumentCode(itemCode);
   String documentPath = qcMode ? "ITEMHEADERQC" : "ITEMHEADER";
   documentPath += "/" + itemDocument;
   FirebaseJson content;
   content.set("fields/TemperatureValue/doubleValue", String(currentReadTemperature).c_str());
+  content.set("fields/LastSensorUpdateDate/timestampValue", String(dateNow).c_str());
   if (Firebase.Firestore.patchDocument(
       &fbdo, 
       FIREBASE_PROJECT_ID, 
@@ -220,7 +226,8 @@ bool insertLog(int itemCode, float currentReadTemperature, String dateNow) {
   String documentPath = qcMode ? "ITEMSENSORLOGQC" : "ITEMSENSORLOG";
   FirebaseJson content;
   content.set("fields/ItemCode/doubleValue", String(itemCode).c_str());
-  content.set("fields/TemperatureValue/doubleValue", String(currentReadTemperature).c_str());
+  content.set("fields/SensorValue/doubleValue", String(currentReadTemperature).c_str());
+  content.set("fields/SensorType/doubleValue", String(0).c_str());
   content.set("fields/CreateDate/timestampValue", String(dateNow).c_str());
   content.set("fields/CreateBy/stringValue", "system");
   if(Firebase.Firestore.createDocument(&fbdo, FIREBASE_PROJECT_ID, "", documentPath.c_str(), content.raw())) {
