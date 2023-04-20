@@ -4,6 +4,7 @@
 #include <time.h>
 #include <EEPROM.h>
 #define IS_TEMP_FCM_FREE_ADDRESS 0 // flag to prevent temperature FCM spam
+#define RAIN_SENSOR_STATE 1 // store state of rain sensor
 #define FCM_BODY_ADDRESS 10 // FCM request body
 int currentTime = 0; // can be minute or hour or day
 //"2023-02-26T17:00:00.00000Z"; // ISO 8601/RFC3339 UTC "Zulu" format
@@ -129,22 +130,48 @@ int main() {
   delay(30000); // 30 seconds
   // delay(60000); // 1 minute
 
-  #pragma region Rain reading
-  int rainSensorValue = analogRead(RAIN_PIN_ANALOG);
-  Serial.println(rainSensorValue);
-  if (rainSensorValue < 900) { //drizzling
-    Serial.println("drizzling");
-  } else if (rainSensorValue < 400) {
-    Serial.println("rain");
-  } else if (rainSensorValue < 100) {
-    Serial.println("heavy rain");
-  } else {
-    Serial.println("no rain");
-  }
+  String _currentDate = getTimeStampNow();
 
+  #pragma region Rain reading
+  float rainSensorValue = analogRead(RAIN_PIN_ANALOG);
   if (WiFi.status() == WL_CONNECTED) {
     if (Firebase.ready()) {
+      // save captured sensor
+      if (_currentDate != "") {
+        while (!updateSensorHeader(rainSensorValue, 1, currentDate)) {
+          delay(2000);
+        }
+        Serial.println("[success] update sensor header success!");
+      }
 
+      // send FCM
+      int prevRainState = EEPROM.read(RAIN_SENSOR_STATE);
+      String title = "";
+      String message = "";
+      if (rainSensorValue < 900) {
+        EEPROM.write(RAIN_SENSOR_STATE, 1);
+        if (prevRainState < 1) {
+          title = "Info";
+          message = "Current weather is drizzle";
+          fetchFCM(title, message);
+        }
+      } else if (rainSensorValue < 500) {
+        EEPROM.write(RAIN_SENSOR_STATE, 2);
+        if (prevRainState < 2) {
+          title = "Info";
+          message = "Current weather is rain";
+          fetchFCM(title, message);
+        }
+      } else if (rainSensorValue < 100) {
+        EEPROM.write(RAIN_SENSOR_STATE, 3);
+        if (prevRainState < 3) {
+          title = "Warning";
+          message = "Current weather is heavy rain";
+          fetchFCM(title, message);
+        }
+      } else {
+        EEPROM.write(RAIN_SENSOR_STATE, 0);
+      }
     }
   }
   #pragma endregion
@@ -153,23 +180,17 @@ int main() {
   #pragma region Item Temperature reading
   sensors.requestTemperatures();
   float currentReadTemperature = sensors.getTempCByIndex(itemCode);
-  Serial.printf("[info] read temperature: %f\n", currentReadTemperature);
   if (currentReadTemperature != -127) {
     if (WiFi.status() == WL_CONNECTED) {
       if (Firebase.ready()) {
-        if (currentReadTemperature > 32 && EEPROM.read(IS_TEMP_FCM_FREE_ADDRESS) == 1) {
-          String title = "Warning";
-          String message = "Item " + String(itemCode) + " temperature is warm: " + String(currentReadTemperature);
-          fetchFCM(title, message);
-        }
-        String _currentDate = getTimeStampNow();
+        // save captured sensor
         if (_currentDate != "") {
           currentDate = _currentDate;
           currentDate += currentDate.indexOf("Z") <= 0 ? "Z" : "";
           while (!updateItemHeader(itemCode, currentReadTemperature, currentDate)) {
             delay(2000);
           }
-          Serial.println("[success] update header success!");
+          Serial.println("[success] update item header success!");
           // int timeRead = getCurrentMinute(currentDate.c_str()); // test only
           int timeRead = getCurrentHour(currentDate.c_str());
           if (currentTime != timeRead) {
@@ -179,6 +200,13 @@ int main() {
             EEPROM.write(IS_TEMP_FCM_FREE_ADDRESS, 1);
             Serial.println("[success] logging success!");
             currentTime = timeRead; 
+          }
+
+          // send FCM
+          if (currentReadTemperature > 32 && EEPROM.read(IS_TEMP_FCM_FREE_ADDRESS) == 1) {
+            String title = "Warning";
+            String message = "Item " + String(itemCode) + " temperature is warm: " + String(currentReadTemperature);
+            fetchFCM(title, message);
           }
         }
       } else {
@@ -211,11 +239,11 @@ bool updateItemHeader(int itemCode, float currentReadTemperature, String dateNow
       "", 
       documentPath.c_str(),
       content.raw(), 
-      "TemperatureValue")) {
+      "TemperatureValue,LastSensorUpdateDate")) {
     // Serial.printf("ok\n%s\n\n", fbdo.payload().c_str());
     return true;
   } else {
-    Serial.println("[error] update header failed!");
+    Serial.println("[error] update item header failed!");
     Serial.println(fbdo.errorReason());
     resetIfOverfailed();
     return false;
@@ -235,6 +263,37 @@ bool insertLog(int itemCode, float currentReadTemperature, String dateNow) {
     return true;
   } else {
     Serial.println("[error] logging failed!");
+    Serial.println(fbdo.errorReason());
+    resetIfOverfailed();
+    return false;
+  }
+}
+
+bool updateSensorHeader(float currentReadSensor, int sensorType, String dateNow) {
+  String itemDocument = "";
+  switch (sensorType) {
+    case 0:
+      break;
+    case 1:
+      itemDocument = qcMode ? "OwP1AiH2V9qFmUmFaxVj" : "kySLPPBr2ktANhdoCEU2";
+      break;    
+  }
+  String documentPath = qcMode ? "SENSORHEADERQC" : "SENSORHEADER";
+  documentPath += "/" + itemDocument;
+  FirebaseJson content;
+  content.set("fields/SensorValue/doubleValue", String(currentReadSensor).c_str());
+  content.set("fields/LastUpdateDate/timestampValue", String(dateNow).c_str());
+  if (Firebase.Firestore.patchDocument(
+      &fbdo, 
+      FIREBASE_PROJECT_ID, 
+      "", 
+      documentPath.c_str(),
+      content.raw(), 
+      "SensorValue,LastUpdateDate")) {
+    // Serial.printf("ok\n%s\n\n", fbdo.payload().c_str());
+    return true;
+  } else {
+    Serial.println("[error] update sensor header failed!");
     Serial.println(fbdo.errorReason());
     resetIfOverfailed();
     return false;
