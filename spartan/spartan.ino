@@ -149,28 +149,36 @@ int main() {
       String title = "";
       String message = "";
       if (rainSensorValue < 900) {
-        EEPROM.write(RAIN_SENSOR_STATE, 1);
+        if (prevRainState != 1) {
+          EEPROM.write(RAIN_SENSOR_STATE, 1);
+        }
         if (prevRainState < 1) {
           title = "Info";
           message = "Current weather is drizzle";
           fetchFCM(title, message);
         }
       } else if (rainSensorValue < 500) {
-        EEPROM.write(RAIN_SENSOR_STATE, 2);
+        if (prevRainState != 2) {
+          EEPROM.write(RAIN_SENSOR_STATE, 2);
+        }
         if (prevRainState < 2) {
           title = "Info";
           message = "Current weather is rain";
           fetchFCM(title, message);
         }
       } else if (rainSensorValue < 100) {
-        EEPROM.write(RAIN_SENSOR_STATE, 3);
+        if (prevRainState != 3) {
+          EEPROM.write(RAIN_SENSOR_STATE, 3);
+        }
         if (prevRainState < 3) {
           title = "Warning";
           message = "Current weather is heavy rain";
           fetchFCM(title, message);
         }
       } else {
-        EEPROM.write(RAIN_SENSOR_STATE, 0);
+        if (prevRainState != 0) {
+          EEPROM.write(RAIN_SENSOR_STATE, 0);
+        }
       }
     }
   }
