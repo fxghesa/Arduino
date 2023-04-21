@@ -11,8 +11,8 @@ sudo apt autoclean && sudo apt autoremove
 3. cloud fire store example
 https://github.com/mobizt/Firebase-ESP-Client/tree/main/examples
 
-4. issue reference. include with comment when commit
-{comment message} Closes #1.
+4. issue reference. include with comment when commit \
+`{comment message} Closes #1.`
 
 
 library required to install:
