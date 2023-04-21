@@ -148,7 +148,7 @@ int main() {
       int prevRainState = EEPROM.read(RAIN_SENSOR_STATE);
       String title = "";
       String message = "";
-      if (rainSensorValue < 900) {
+      if (rainSensorValue >= 600 && rainSensorValue < 900) {
         if (prevRainState != 1) {
           EEPROM.write(RAIN_SENSOR_STATE, 1);
           EEPROM.commit();
@@ -158,7 +158,7 @@ int main() {
           message = "Current weather is drizzle";
           fetchFCM(title, message);
         }
-      } else if (rainSensorValue < 500) {
+      } else if (rainSensorValue >= 400 && rainSensorValue < 600) {
         if (prevRainState != 2) {
           EEPROM.write(RAIN_SENSOR_STATE, 2);
           EEPROM.commit();
@@ -168,7 +168,7 @@ int main() {
           message = "Current weather is rain";
           fetchFCM(title, message);
         }
-      } else if (rainSensorValue < 100) {
+      } else if (rainSensorValue < 400) {
         if (prevRainState != 3) {
           EEPROM.write(RAIN_SENSOR_STATE, 3);
           EEPROM.commit();
