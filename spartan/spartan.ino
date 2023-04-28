@@ -6,11 +6,7 @@
 #define IS_TEMP_FCM_FREE_ADDRESS 0 // flag to prevent temperature FCM spam
 #define RAIN_SENSOR_STATE 1 // store state of rain sensor
 #define FCM_BODY_ADDRESS 10 // FCM request body
-int currentTime = 0; // can be minute or hour or day
-//"2023-02-26T17:00:00.00000Z"; // ISO 8601/RFC3339 UTC "Zulu" format
-int itemCode = 0;
-String currentDate = "2023-03-01T00:00:00.00000Z";
-int errorCount = 0;
+
 void(* resetFunc) (void) = 0;
 
 #pragma region SSID
@@ -21,6 +17,13 @@ const char* ssid = "Brawijaya";
 const char* password = "ujungberung";
 // const char* ssid = "Sandy Asmara";
 // const char* password = "sandydimas17";
+#pragma endregion
+
+#pragma region DHT11
+#include <DHT.h>
+#define DHTPIN D7     //D7 13
+#define DHTTYPE DHT11
+DHT dht(DHTPIN, DHTTYPE);
 #pragma endregion
 
 #pragma region Cloud Firestore
@@ -34,18 +37,13 @@ FirebaseAuth auth;
 FirebaseConfig config;
 #pragma endregion
 
-#pragma region Global Variable
-bool qcMode = true;
-#pragma endregion
-
 #define RAIN_PIN_ANALOG A0 // A0
-#define RAIN_PIN_DIGITAL D0 // D0
 
 #pragma region DS18B20 Temperature Sensor
 #include <OneWire.h>
 #include <DallasTemperature.h>
 // Data wire is plugged into digital pin 2 on the Arduino
-#define ONE_WIRE_BUS 5 //D2
+#define ONE_WIRE_BUS D1 //D1
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
 #pragma endregion
@@ -59,6 +57,15 @@ DallasTemperature sensors(&oneWire);
 #define ITEM_5 "TqMR7gF6MC5i9IeFdTfB"
 #define ITEM_0_QC "ZQtO1TTwNsO2ilsLkQAx"
 #define ITEM_1_QC "oriYYaxGGzZJof8TrZER"
+#pragma endregion
+
+#pragma region Global Variable
+bool qcMode = true;
+int currentTime = 0; // can be minute or hour or day
+//"2023-02-26T17:00:00.00000Z"; // ISO 8601/RFC3339 UTC "Zulu" format
+int itemCode = 0;
+String currentDate = "2023-03-01T00:00:00.00000Z";
+int errorCount = 0;
 #pragma endregion
 
 void setup() {
@@ -132,6 +139,19 @@ int main() {
 
   String _currentDate = getTimeStampNow();
 
+  #pragma region DHT11 reading
+  float currentReadHumidity = dht.readHumidity();
+  float currentReadTemperature = dht.readTemperature();
+  if (!isnan(currentReadHumidity) && !isnan(currentReadTemperature)) {
+    while (!updateSensorHeader(currentReadHumidity, 2, currentDate)) {
+      delay(2000);
+    }
+    while (!updateSensorHeader(currentReadTemperature, 0, currentDate)) {
+      delay(2000);
+    }
+  }
+  #pragma endregion
+
   #pragma region Rain reading
   float rainSensorValue = analogRead(RAIN_PIN_ANALOG);
   if (WiFi.status() == WL_CONNECTED) {
@@ -191,22 +211,22 @@ int main() {
   Serial.printf("[info] proccessing ItemCode [%d]\n", itemCode);
   #pragma region Item Temperature reading
   sensors.requestTemperatures();
-  float currentReadTemperature = sensors.getTempCByIndex(itemCode);
-  if (currentReadTemperature != -127) {
+  float currentReadTemperatureItem = sensors.getTempCByIndex(itemCode);
+  if (currentReadTemperatureItem != -127) {
     if (WiFi.status() == WL_CONNECTED) {
       if (Firebase.ready()) {
         // save captured sensor
         if (_currentDate != "") {
           currentDate = _currentDate;
           currentDate += currentDate.indexOf("Z") <= 0 ? "Z" : "";
-          while (!updateItemHeader(itemCode, currentReadTemperature, currentDate)) {
+          while (!updateItemHeader(itemCode, currentReadTemperatureItem, currentDate)) {
             delay(2000);
           }
           Serial.println("[success] update item header success!");
           // int timeRead = getCurrentMinute(currentDate.c_str()); // test only
           int timeRead = getCurrentHour(currentDate.c_str());
           if (currentTime != timeRead) {
-            while (!insertLog(itemCode, currentReadTemperature, currentDate)) {
+            while (!insertLog(itemCode, currentReadTemperatureItem, currentDate)) {
               delay(2000);
             }
             EEPROM.write(IS_TEMP_FCM_FREE_ADDRESS, 1);
@@ -216,9 +236,9 @@ int main() {
           }
 
           // send FCM
-          if (currentReadTemperature > 32 && EEPROM.read(IS_TEMP_FCM_FREE_ADDRESS) == 1) {
+          if (currentReadTemperatureItem > 34 && EEPROM.read(IS_TEMP_FCM_FREE_ADDRESS) == 1) {
             String title = "Warning";
-            String message = "Item " + String(itemCode) + " temperature is warm: " + String(currentReadTemperature);
+            String message = "Item " + String(itemCode) + " temperature is warm: " + String(currentReadTemperatureItem);
             fetchFCM(title, message);
           }
         }
@@ -239,12 +259,12 @@ int main() {
   increaseItemCode();
 }
 
-bool updateItemHeader(int itemCode, float currentReadTemperature, String dateNow) {
+bool updateItemHeader(int itemCode, float currentReadTemperatureItem, String dateNow) {
   String itemDocument = getDocumentCode(itemCode);
   String documentPath = qcMode ? "ITEMHEADERQC" : "ITEMHEADER";
   documentPath += "/" + itemDocument;
   FirebaseJson content;
-  content.set("fields/TemperatureValue/doubleValue", String(currentReadTemperature).c_str());
+  content.set("fields/TemperatureValue/doubleValue", String(currentReadTemperatureItem).c_str());
   content.set("fields/LastSensorUpdateDate/timestampValue", String(dateNow).c_str());
   if (Firebase.Firestore.patchDocument(
       &fbdo, 
@@ -263,11 +283,11 @@ bool updateItemHeader(int itemCode, float currentReadTemperature, String dateNow
   }
 }
 
-bool insertLog(int itemCode, float currentReadTemperature, String dateNow) {
+bool insertLog(int itemCode, float currentReadTemperatureItem, String dateNow) {
   String documentPath = qcMode ? "ITEMSENSORLOGQC" : "ITEMSENSORLOG";
   FirebaseJson content;
   content.set("fields/ItemCode/doubleValue", String(itemCode).c_str());
-  content.set("fields/SensorValue/doubleValue", String(currentReadTemperature).c_str());
+  content.set("fields/SensorValue/doubleValue", String(currentReadTemperatureItem).c_str());
   content.set("fields/SensorType/doubleValue", String(0).c_str());
   content.set("fields/CreateDate/timestampValue", String(dateNow).c_str());
   content.set("fields/CreateBy/stringValue", "system");
@@ -286,10 +306,14 @@ bool updateSensorHeader(float currentReadSensor, int sensorType, String dateNow)
   String itemDocument = "";
   switch (sensorType) {
     case 0:
+      itemDocument = qcMode ? "DgIZ9j9sHkaTIhZwN65x" : "IkQlE4jLWI83PMGHOvPy";
       break;
     case 1:
       itemDocument = qcMode ? "OwP1AiH2V9qFmUmFaxVj" : "kySLPPBr2ktANhdoCEU2";
-      break;    
+      break;
+    case 2:
+      itemDocument = qcMode ? "hWcLWTHQQvA8ad0LRcwh" : "DdJuS08b3OektdixtvAc";
+      break;
   }
   String documentPath = qcMode ? "SENSORHEADERQC" : "SENSORHEADER";
   documentPath += "/" + itemDocument;
@@ -397,7 +421,8 @@ void increaseItemCode() {
     // itemCode = (itemCode < 1) ? itemCode + 1 : 0;
     itemCode = 0;
   } else {
-    itemCode = (itemCode < 5) ? itemCode + 1 : 0;
+    // itemCode = (itemCode < 5) ? itemCode + 1 : 0;
+    itemCode = 0;
   }
   
 }
