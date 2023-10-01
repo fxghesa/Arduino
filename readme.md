@@ -1,4 +1,4 @@
-Spartan Fighter
+Spartan Fighter.
 Arduino interface of Spartan
 
 1. install environment for esp8266
